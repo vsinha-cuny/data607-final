@@ -1,0 +1,179 @@
+---
+title: "DATA 607 Final Project"
+author: "Vikas Sinha"
+date: May 22, 2018
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+### Aims and Motivation
+
+Educational expenditure on public education is a subject of debate in many places around the world, which prioritize its importance in different ways. The usefulness, or otherwise of this expenditure is one of the cornerstones of this debate, on which much of the public argument and controversy is centered.
+
+In today's world the importance of the so-called intellectual capital cannot be overstated. In technology, there is a worldwide race among nations to establish a dominant position in research and applications of emerging areas, in fields such as artifical intelligence, autonomous systems and alternative energy. The filing of patents in technical fields in general is naturally perceived to be a key indicator of technological prowess. Most economic decision-makers would probably view the filing of large numbers of patents by their private sector companies and universities to be a desirable outcome of increasing expenditure on public education, if such an outcome could be obtained.
+
+The objective of this study is to investigate whether a correlation exists between the amount of per-capita expenditure that a country allocates to public education, and the number of patents filed per-capita by that country. For this, data from several publically available data sources are used, along with regression modeling techniques.
+
+
+I will attempt to show a relationship between a country's per-capita investment in public higher education, and its number of patents filed per capita. Depending on the data, I shall examine whether the former can be used to predict the latter. My data sources are the following: 
+
+(a) For per-capita expenditure on higher education, the National Center for Education Statistics (NCES) maintains Education Expenditures by Country at https://nces.ed.gov/programs/coe/indicator_cmd.asp. Data can be obtained from the 35-member OECD (organisation for Economic cooperation and Development) at http://stats.oecd.org/Index.aspx.
+
+(b) For patents filed by country, my sources will include the Google Patents database and its API, and optionally, additional sources such as IP Street (http://www.ipstreet.com/).
+
+Depending on its results, this study can be used to support a case for higher investment in public education in the United States. By comparing the growth curves for the number of patents filed by countries, it may also show whether the United States's status as the leading country for technological innovation is being challenged.
+
+A linear regression model of the correlation between education investment and patents filed seems sufficient for this purpose.
+
+
+
+### Data sources:
+* National Center for Education Statistics
+  https://nces.ed.gov/programs/coe/indicator_cmd.asp
+* Wikipedia
+  https://en.wikipedia.org/wiki/World_Intellectual_Property_Indicators
+* World Intellectual Property Organization (WIPO).
+  http://www.wipo.int/ipstats/en/statistics/country_profile/
+* World Bank Group.
+  https://data.worldbank.org/indicator/SE.XPD.TOTL.GD.ZS
+
+```{r warning=F, message=F}
+# Libraries for data manipulations, analysis and web scraping.
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(RCurl)
+library(rvest)
+library(stringr)
+library(tidyr)
+library(utils)
+library(XML)
+```
+
+##### Step 1: Select the countries to include in this study.
+
+For this, we select the top 6 countries with the highest number of patent
+applications per million of population.
+The source of this information is Wikipedia:
+https://en.wikipedia.org/wiki/World_Intellectual_Property_Indicators
+
+```{r warning=F, message=F}
+wiki_url = "https://en.wikipedia.org/wiki/World_Intellectual_Property_Indicators"
+temp1 <- wiki_url %>% read_html %>% html_nodes("table")
+
+# List of the countries with highest patent applications for 2012
+# Patent applications per million population for the top 10 origins, 2012
+clist = html_table(temp1[6])
+Countries = data.frame(clist)
+Countries = Countries[1:6,]
+# Countries = Countries %>% select(Country)
+kable(Countries)
+
+```
+
+
+#### Patents by Country.
+This data is obtained from World Intellectual Property Organization (WIPO).
+The list of countries is from:
+http://www.wipo.int/ipstats/en/statistics/country_profile/
+
+```{r warning=F, message=F}
+Ccodes = list("South Korea", "Japan", "Switzerland", "Germany", "United States", "Finland")
+Ccodes2 = list("KR", "JP", "CH", "DE", "US", "FI")
+Ccodes3 = list("KOR", "JPN", "CHE", "DEU", "USA", "FIN")
+ccount = length(Ccodes)
+wipo_url = "http://www.wipo.int/ipstats/en/statistics/country_profile/profile.jsp?code="
+
+PatentsByCountry = list()
+i = 0
+for (ccode in Ccodes2) {
+    i = i + 1
+    url2 = paste(wipo_url, ccode, sep="")
+    temp2 <- url2 %>% read_html %>% html_nodes("table")
+    grants = html_table(temp2[5])
+    df = data.frame(grants)
+    df = df[-c(1),] %>% select(-X4)
+    df$Applications = as.integer(gsub(",", "", df$X2)) + as.integer(gsub(",", "", df$X3))
+    df = df %>% select(-c(X2, X3))
+    names(df) = c("Year", "Applications")
+    print(paste(Ccodes[i], ":"))
+    print(df)
+    PatentsByCountry[[ccode]] = df
+}
+```
+
+
+#### Public Education Expenditures
+Now we read data on public education expenditures.
+Data source is World Bank Group.
+This data is available as a zipped CSV file downloaded from
+https://data.worldbank.org/indicator/SE.XPD.TOTL.GD.ZS
+
+
+```{r}
+newdf = data.frame()
+Expenditures = data.frame()
+filename = "API_SE.XPD.TOTL.GD.ZS_DS2_en_csv_v2_9908693.csv"
+expend2 <- read.csv(filename, skip=4)
+
+for (cty in Ccodes3) {
+    newdf = filter(expend2, Country.Code == cty)
+    newdf = newdf %>% select(Country.Code, X2010:X2016)
+    Expenditures = rbind(Expenditures, newdf)
+}
+kable(Expenditures)
+```
+
+
+#### Population Growth Data
+Next we read data on population growth by year of the selected countries.
+This data is required to calculate the per-capita patent applications filed.
+Without this information we would be using raw patent counts which would not
+normalize for countries with large and small populations.
+This information is obtained from Wikipedia.
+
+```{r}
+wiki_url3 = "https://en.wikipedia.org/wiki/List_of_countries_by_past_population_(United_Nations,_estimates)"
+temp3 <- wiki_url3 %>% 
+  read_html %>%
+  html_nodes("table")
+
+# List of the countries with by populations.
+# Patent applications per million population for the top 10 origins, 2012
+clist = html_table(temp3[1])
+pop.all = data.frame(clist)
+names(pop.all)[1] = "Country"
+pop.all = pop.all %>% select(Country, X2010, X2015)
+Populations = data.frame()
+
+for (cy in Ccodes) {
+    Populations = rbind(Populations, subset(pop.all, pop.all$Country == cy))
+}
+
+Populations$Mean = (as.integer(gsub(",", "", Populations$X2010)) +
+                    as.integer(gsub(",", "", Populations$X2015)))/2
+kable(Populations)
+```
+
+
+### Data Characteristics
+
+
+### Regression Model
+
+
+### Conclusions
+
+
+### Challenges
+1. Population growth data is not available for countries on a per-year basis, but only on 5-year intervals.
+   To address this limitation I used the data from the closest year to estimate the population on 
+   a given year. Data showed that for the countries selected, population growth rates in the 6-year
+   interval used were not very high.
+2. Parsing the data in tables in Wikipedia took some time to implement correctly. Initially I started
+   with the WikepediR package (https://cran.r-project.org/web/packages/WikipediR/index.html) but
+   switched to _rvest_ when I realized that the latter was easier to use.
+
+
