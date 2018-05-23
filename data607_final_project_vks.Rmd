@@ -1,10 +1,10 @@
 ---
 title: "DATA 607 Final Project"
 author: "Vikas Sinha"
-date: May 22, 2018
+date: May 23, 2018
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 
 
@@ -111,6 +111,7 @@ Data source is World Bank Group.
 This data is available as a zipped CSV file downloaded from
 https://data.worldbank.org/indicator/SE.XPD.TOTL.GD.ZS
 
+Education expenditure is shown as a percentage of GDP.
 
 ```{r}
 newdf = data.frame()
@@ -123,7 +124,10 @@ for (cty in Ccodes3) {
     newdf = newdf %>% select(Country.Code, X2010:X2016)
     Expenditures = rbind(Expenditures, newdf)
 }
+
+# Education expenditure is shown as a percentage of GDP.
 kable(Expenditures)
+
 ```
 
 
@@ -163,6 +167,52 @@ kable(Populations)
 
 ### Regression Model
 
+First we consolidate all data into one data.frame.
+
+```{r warning=F}
+
+# Add Patents columns to expenditures
+
+patents = data.frame()
+i = 1
+for (cty in Ccodes2) {
+    cty2 = Ccodes2[i]
+    cty3 = Ccodes3[i]
+    i = i + 1
+    ll = PatentsByCountry[unlist(cty2)]
+    df = data.frame(ll)
+    names(df) = c("Year", "Applications")
+    df2 = spread(df, Year, Applications)
+    names(df2) = paste("P", seq(from=2007, to=2016), sep="")
+    df2 = df2 %>% select(c(P2010:P2016))
+    df2$Country.Code = as.factor(unlist(cty3))
+    # Combine with expenditures into 1 dataframe
+    patents = rbind(patents, df2)
+}
+
+xdf = inner_join(Expenditures, patents)
+
+# Next, drop columns for which we have incomplete data
+xdf = xdf %>% select(-c(X2010, X2011, X2015, X2016, P2010, P2011, P2015, P2016))
+
+# Divide patents counts by population means to get per-capita patents.
+
+xdf$P2012 = xdf$P2012/Populations$Mean
+xdf$P2013 = xdf$P2013/Populations$Mean
+xdf$P2014 = xdf$P2014/Populations$Mean
+
+kable(xdf)
+```
+
+
+
+Display the charts of Patents vs Educational Expenditure for all countries.
+
+```{r}
+
+
+```
+
 
 ### Conclusions
 
@@ -172,8 +222,10 @@ kable(Populations)
    To address this limitation I used the data from the closest year to estimate the population on 
    a given year. Data showed that for the countries selected, population growth rates in the 6-year
    interval used were not very high.
-2. Parsing the data in tables in Wikipedia took some time to implement correctly. Initially I started
+2. For some the period 2010-2016, educational expenditures were not available for some of the selected countries.
+   To address this limitation I restricted the data to those years for which the data were available.
+3. Parsing the data in tables in Wikipedia took some time to implement correctly. Initially I started
    with the WikepediR package (https://cran.r-project.org/web/packages/WikipediR/index.html) but
-   switched to _rvest_ when I realized that the latter was easier to use.
+   switched to the _rvest_ package when I realized that the latter was easier to use.
 
 
