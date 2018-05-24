@@ -10,34 +10,35 @@ output:
 
 ### Aims and Motivation
 
-Educational expenditure on public education is a subject of debate in many places around the world, which prioritize its importance in different ways. The usefulness, or otherwise of this expenditure is one of the cornerstones of this debate, on which much of the public argument and controversy is centered.
+Expenditure on public education is a subject of debate in many places around the world, and is prioritized in different ways. The usefulness or otherwise of this expenditure is one of the cornerstones of this debate. In the United States, much of the debate is centered on whether that expenditure is better utilized when allocated to the private sector.
 
-In today's world the importance of the so-called intellectual capital cannot be overstated. In technology, there is a worldwide race among nations to establish a dominant position in research and applications of emerging areas, in fields such as artifical intelligence, autonomous systems and alternative energy. The filing of patents in technical fields in general is naturally perceived to be a key indicator of technological prowess. Most economic decision-makers would probably view the filing of large numbers of patents by their private sector companies and universities to be a desirable outcome of increasing expenditure on public education, if such an outcome could be obtained.
+In today's world the importance of the so-called intellectual capital, largely comprising of technological research and development, cannot be overstated. In technology, there is a worldwide race among nations to establish a dominant position in research and applications of emerging areas, in fields such as artifical intelligence, autonomous systems and alternative energy. The filing of patents in technical fields in general is naturally perceived to be a key indicator of technological prowess. Most economic decision-makers would probably view the filing of large numbers of patents by their private sector companies and universities to be a desirable outcome of increasing expenditure on public education, if such an outcome could be obtained.
 
 The objective of this study is to investigate whether a correlation exists between the amount of per-capita expenditure that a country allocates to public education, and the number of patents filed per-capita by that country. For this, data from several publically available data sources are used, along with regression modeling techniques.
 
 
-I will attempt to show a relationship between a country's per-capita investment in public higher education, and its number of patents filed per capita. Depending on the data, I shall examine whether the former can be used to predict the latter. My data sources are the following: 
+This project focuses on the relationship between a country's per-capita investment in public higher education, and its number of patents filed per capita. Depending on the data, I shall examine whether the two are correlated.
 
-(a) For per-capita expenditure on higher education, the National Center for Education Statistics (NCES) maintains Education Expenditures by Country at https://nces.ed.gov/programs/coe/indicator_cmd.asp. Data can be obtained from the 35-member OECD (organisation for Economic cooperation and Development) at http://stats.oecd.org/Index.aspx.
+Depending on its results, this study could be used to support making greater investment in public education in the United States. 
 
-(b) For patents filed by country, my sources will include the Google Patents database and its API, and optionally, additional sources such as IP Street (http://www.ipstreet.com/).
-
-Depending on its results, this study can be used to support a case for higher investment in public education in the United States. By comparing the growth curves for the number of patents filed by countries, it may also show whether the United States's status as the leading country for technological innovation is being challenged.
-
-A linear regression model of the correlation between education investment and patents filed seems sufficient for this purpose.
+A linear regression model is used to determine correlation among the variables.
 
 
 
 ### Data sources:
-* National Center for Education Statistics
-  https://nces.ed.gov/programs/coe/indicator_cmd.asp
+
+The following data sources were used:
+
 * Wikipedia
   https://en.wikipedia.org/wiki/World_Intellectual_Property_Indicators
+  
 * World Intellectual Property Organization (WIPO).
   http://www.wipo.int/ipstats/en/statistics/country_profile/
+  
 * World Bank Group.
   https://data.worldbank.org/indicator/SE.XPD.TOTL.GD.ZS
+
+
 
 ```{r warning=F, message=F}
 # Libraries for data manipulations, analysis and web scraping.
@@ -50,6 +51,9 @@ library(stringr)
 library(tidyr)
 library(utils)
 library(XML)
+library(stats)
+library(grid)
+library(gridExtra)
 ```
 
 ##### Step 1: Select the countries to include in this study.
@@ -86,7 +90,7 @@ Ccodes3 = list("KOR", "JPN", "CHE", "DEU", "USA", "FIN")
 ccount = length(Ccodes)
 wipo_url = "http://www.wipo.int/ipstats/en/statistics/country_profile/profile.jsp?code="
 
-PatentsByCountry = list()
+Patents = list()
 i = 0
 for (ccode in Ccodes2) {
     i = i + 1
@@ -97,10 +101,23 @@ for (ccode in Ccodes2) {
     df = df[-c(1),] %>% select(-X4)
     df$Applications = as.integer(gsub(",", "", df$X2)) + as.integer(gsub(",", "", df$X3))
     df = df %>% select(-c(X2, X3))
+    
+    # Drop the first 3 rows, 2007-2009.
+    df = df[4:10,]
     names(df) = c("Year", "Applications")
-    print(paste(Ccodes[i], ":"))
-    print(df)
-    PatentsByCountry[[ccode]] = df
+    Patents[[ccode]] = df
+}
+```
+
+
+Display the charts of Raw Patents Counts (not adjusted for population).
+
+```{r}
+par(mfrow=c(2, 3))
+for (i in 1:ccount) {
+    df = data.frame(Patents[i])
+    names(df) = c("Year", "Total Applications")
+    plot(df, main=Ccodes[i])
 }
 ```
 
@@ -114,6 +131,7 @@ https://data.worldbank.org/indicator/SE.XPD.TOTL.GD.ZS
 Education expenditure is shown as a percentage of GDP.
 
 ```{r}
+par(mfrow=c(1,1))
 newdf = data.frame()
 Expenditures = data.frame()
 filename = "API_SE.XPD.TOTL.GD.ZS_DS2_en_csv_v2_9908693.csv"
@@ -140,12 +158,9 @@ This information is obtained from Wikipedia.
 
 ```{r}
 wiki_url3 = "https://en.wikipedia.org/wiki/List_of_countries_by_past_population_(United_Nations,_estimates)"
-temp3 <- wiki_url3 %>% 
-  read_html %>%
-  html_nodes("table")
+temp3 <- wiki_url3 %>% read_html %>% html_nodes("table")
 
-# List of the countries with by populations.
-# Patent applications per million population for the top 10 origins, 2012
+# Country Population data by Year.
 clist = html_table(temp3[1])
 pop.all = data.frame(clist)
 names(pop.all)[1] = "Country"
@@ -162,59 +177,103 @@ kable(Populations)
 ```
 
 
-### Data Characteristics
 
+### Data Visualization
 
-### Regression Model
-
-First we consolidate all data into one data.frame.
 
 ```{r warning=F}
 
 # Add Patents columns to expenditures
+Spending = list()
 
 patents = data.frame()
 i = 1
 for (cty in Ccodes2) {
-    cty2 = Ccodes2[i]
-    cty3 = Ccodes3[i]
+    cty2 = unlist(Ccodes2[i])
+    cty3 = unlist(Ccodes3[i])
+    
+	# Divide patents counts by population means to get per-capita patents.
+	Patents[[cty2]]$Applications = Patents[[cty2]]$Applications / Populations[i,]$Mean
+    df = Patents[[cty2]]
+    
+    spending = filter(Expenditures, Country.Code == cty3)
+    names(spending) = c("Country.Code", "2010":"2016")
+    spending = spending %>%
+    		   gather(Year, Spent, "2010":"2016") %>%
+    		   select(-c(Country.Code))
+    Spending[[cty2]] = spending
     i = i + 1
-    ll = PatentsByCountry[unlist(cty2)]
-    df = data.frame(ll)
-    names(df) = c("Year", "Applications")
-    df2 = spread(df, Year, Applications)
-    names(df2) = paste("P", seq(from=2007, to=2016), sep="")
-    df2 = df2 %>% select(c(P2010:P2016))
-    df2$Country.Code = as.factor(unlist(cty3))
-    # Combine with expenditures into 1 dataframe
-    patents = rbind(patents, df2)
 }
 
-xdf = inner_join(Expenditures, patents)
 
-# Next, drop columns for which we have incomplete data
-xdf = xdf %>% select(-c(X2010, X2011, X2015, X2016, P2010, P2011, P2015, P2016))
-
-# Divide patents counts by population means to get per-capita patents.
-
-xdf$P2012 = xdf$P2012/Populations$Mean
-xdf$P2013 = xdf$P2013/Populations$Mean
-xdf$P2014 = xdf$P2014/Populations$Mean
-
-kable(xdf)
+# Make a combined Expenditure vs Patents-per-capita DF.
+Models = list()
+for (i in 1:ccount) {
+	cty = unlist(Ccodes3[i])
+	df = inner_join(Spending[[i]], Patents[[i]], by = "Year")
+	df$Year = as.numeric(df$Year)
+	Models[[cty]] = df
+}
 ```
 
 
 
 Display the charts of Patents vs Educational Expenditure for all countries.
 
-```{r}
+```{r warning=F}
+for (i in 1:ccount) {
+	cty3 = unlist(Ccodes3[i])
+	cty = unlist(Ccodes[i])
+	df = Models[[cty3]]
+	
+	p1 = ggplot(data=df, aes(x=Year)) +
+		 geom_line(aes(y=Spent)) +
+		 ggtitle(paste(cty, ": Public Education", sep="")) +
+		 ylab("Public Education Expenditure / GDP")
+	p2 = ggplot(data=df, aes(x=Year)) +
+		 geom_line(aes(y=Applications)) + 
+		 ggtitle(paste("Patent Applications per Capita")) +
+		 ylab("Patents per capita")
+	grid.arrange(p1, p2, ncol=2)
+}
+```
 
+
+
+### Regression Model
+
+There seems to be no particular pattern in the charts showing Expenditures (as percentage of GDP) against Patent Applications per capita. A linear regression model was attempted for a few countries in the data set.
+
+
+```{r}
+kor = Models[["KOR"]]
+usa = Models[["USA"]]
+
+m.kor = lm(Applications ~ Spent, data = kor)
+summary(m.kor)
+m.usa = lm(Applications ~ Spent, data = usa)
+summary(m.usa)
+
+par(mfrow=c(1,2))
+plot(fitted(m.kor), resid(m.kor))
+plot(fitted(m.usa), resid(m.usa))
 
 ```
 
 
+
 ### Conclusions
+
+In the two countries for which linear regression models were built, the Adjusted R-squared values are
+relatively high, indicating a good fit. However, the coefficients are opposite in sign, reflecting the
+fact that for one of the two (USA) the data suggest a negative correlation.
+
+From the above charts it seems clear that, for the countries selected in this study, the available data do
+not show a clear relationship between the level of expenditure on public education, measured as a percentage
+of GDP, and the number of patents filed per-capita. It is likely that other macro-economic
+or global factors affect the measured output, and the proposed model is over-simplistic. It is likely that more
+factors, such as regional and global economic growth rates, which affect private industry investment in
+research and development, influence the measured output and need to be included as significant variables.
 
 
 ### Challenges
